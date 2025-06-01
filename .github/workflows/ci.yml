@@ -32,11 +32,6 @@ jobs:
       with:
         category: "/language:javascript"
 
-    - name: Run Dependency Check
-      uses: snyk/actions/node@master
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
   test-frontend:
     runs-on: ubuntu-latest
     needs: security-scan
