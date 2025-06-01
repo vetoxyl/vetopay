@@ -192,20 +192,6 @@ jobs:
       run: |
         curl -f https://staging.vetopay.com/health || exit 1
 
-    - name: Notify deployment status
-      if: always()
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        channel-id: 'deployments'
-        slack-message: |
-          Deployment to staging ${{ steps.update-ecs.outcome == 'success' && 'succeeded' || 'failed' }}
-          Environment: Staging
-          Commit: ${{ github.sha }}
-          Author: ${{ github.actor }}
-          Branch: ${{ github.ref }}
-      env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-
   deploy-production:
     needs: [test-frontend, test-backend]
     if: github.ref == 'refs/heads/main'
@@ -256,20 +242,6 @@ jobs:
     - name: Health check
       run: |
         curl -f https://vetopay.com/health || exit 1
-
-    - name: Notify deployment status
-      if: always()
-      uses: slackapi/slack-github-action@v1.24.0
-      with:
-        channel-id: 'deployments'
-        slack-message: |
-          Deployment to production ${{ steps.update-ecs.outcome == 'success' && 'succeeded' || 'failed' }}
-          Environment: Production
-          Commit: ${{ github.sha }}
-          Author: ${{ github.actor }}
-          Branch: ${{ github.ref }}
-      env:
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 
     - name: Rollback on failure
       if: failure()
