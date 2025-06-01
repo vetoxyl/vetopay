@@ -51,18 +51,13 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: vetopay/frontend/package-lock.json
 
-    - name: Get npm cache directory
-      id: npm-cache
-      shell: bash
-      run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
-
-    - name: Cache npm dependencies
+    - name: Cache node modules
       uses: actions/cache@v3
       with:
-        path: ${{ steps.npm-cache.outputs.dir }}
+        path: |
+          vetopay/frontend/node_modules
+          ~/.npm
         key: ${{ runner.os }}-node-${{ hashFiles('vetopay/frontend/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-node-
@@ -133,18 +128,13 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: vetopay/backend/package-lock.json
 
-    - name: Get npm cache directory
-      id: npm-cache
-      shell: bash
-      run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
-
-    - name: Cache npm dependencies
+    - name: Cache node modules
       uses: actions/cache@v3
       with:
-        path: ${{ steps.npm-cache.outputs.dir }}
+        path: |
+          vetopay/backend/node_modules
+          ~/.npm
         key: ${{ runner.os }}-node-${{ hashFiles('vetopay/backend/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-node-
