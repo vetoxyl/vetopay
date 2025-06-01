@@ -190,6 +190,24 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
+    - name: Create tsconfig.json
+      run: |
+        cd vetopay/backend
+        echo '{
+          "compilerOptions": {
+            "target": "es2018",
+            "module": "commonjs",
+            "outDir": "./dist",
+            "rootDir": "./src",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "forceConsistentCasingInFileNames": true
+          },
+          "include": ["src/**/*"],
+          "exclude": ["node_modules"]
+        }' > tsconfig.json
+
     - name: Build and push backend
       run: |
         cd vetopay/backend
@@ -240,6 +258,24 @@ jobs:
       id: save-version
       run: |
         echo "CURRENT_VERSION=$(aws ecs describe-services --cluster vetopay-production --services backend --query 'services[0].taskDefinition' --output text)" >> $GITHUB_ENV
+
+    - name: Create tsconfig.json
+      run: |
+        cd vetopay/backend
+        echo '{
+          "compilerOptions": {
+            "target": "es2018",
+            "module": "commonjs",
+            "outDir": "./dist",
+            "rootDir": "./src",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "forceConsistentCasingInFileNames": true
+          },
+          "include": ["src/**/*"],
+          "exclude": ["node_modules"]
+        }' > tsconfig.json
 
     - name: Build and push backend
       run: |
