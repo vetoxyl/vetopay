@@ -14,8 +14,9 @@ RUN npm install && \
 # Copy source code
 COPY src/ ./src/
 
-# Build application
-RUN npm run build
+# Install TypeScript and compile
+RUN npm install -g typescript && \
+    tsc
 
 # Production stage
 FROM node:18-alpine
@@ -39,4 +40,4 @@ ENV PORT=3000
 EXPOSE 3000
 
 # Start application
-CMD ["npm", "start"] 
+CMD ["node", "dist/server.js"] 
