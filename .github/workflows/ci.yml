@@ -1,0 +1,279 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.AWS_ECR_REGISTRY }}
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Run SAST
+      uses: github/codeql-action/init@v2
+      with:
+        languages: javascript
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+
+    - name: Run Dependency Check
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    defaults:
+      run:
+        working-directory: vetopay/frontend
+
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+        os: [ubuntu-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: vetopay/frontend/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run linting
+      run: npm run lint
+
+    - name: Run tests
+      run: npm test
+
+    - name: Run E2E tests
+      run: npm run test:e2e
+
+    - name: Build
+      run: npm run build
+
+    - name: Cache build artifacts
+      uses: actions/cache@v3
+      with:
+        path: vetopay/frontend/dist
+        key: frontend-build-${{ github.sha }}
+        restore-keys: frontend-build-
+
+  test-backend:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    defaults:
+      run:
+        working-directory: vetopay/backend
+
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+        os: [ubuntu-latest]
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vetopay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:6
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: vetopay/backend/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run linting
+      run: npm run lint
+
+    - name: Run unit tests
+      run: npm run test:unit
+
+    - name: Run integration tests
+      run: npm run test:integration
+
+    - name: Run security tests
+      run: npm run test:security
+
+    - name: Build
+      run: npm run build
+
+    - name: Cache build artifacts
+      uses: actions/cache@v3
+      with:
+        path: vetopay/backend/dist
+        key: backend-build-${{ github.sha }}
+        restore-keys: backend-build-
+
+  deploy-staging:
+    needs: [test-frontend, test-backend]
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build and push backend
+      run: |
+        cd vetopay/backend
+        docker build --build-arg NODE_ENV=staging --build-arg VITE_API_URL=https://api-staging.vetopay.com -t $ECR_REPOSITORY/backend:staging .
+        docker push $ECR_REPOSITORY/backend:staging
+
+    - name: Build and push frontend
+      run: |
+        cd vetopay/frontend
+        docker build --build-arg NODE_ENV=staging --build-arg VITE_API_URL=https://api-staging.vetopay.com -t $ECR_REPOSITORY/frontend:staging .
+        docker push $ECR_REPOSITORY/frontend:staging
+
+    - name: Update ECS services
+      id: update-ecs
+      run: |
+        aws ecs update-service --cluster vetopay-staging --service backend --force-new-deployment
+        aws ecs update-service --cluster vetopay-staging --service frontend --force-new-deployment
+
+    - name: Wait for deployment
+      run: |
+        aws ecs wait services-stable --cluster vetopay-staging --services backend frontend
+
+    - name: Health check
+      run: |
+        curl -f https://staging.vetopay.com/health || exit 1
+
+    - name: Notify deployment status
+      if: always()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        channel-id: 'deployments'
+        slack-message: |
+          Deployment to staging ${{ steps.update-ecs.outcome == 'success' && 'succeeded' || 'failed' }}
+          Environment: Staging
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+          Branch: ${{ github.ref }}
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  deploy-production:
+    needs: [test-frontend, test-backend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Save current version
+      id: save-version
+      run: |
+        echo "CURRENT_VERSION=$(aws ecs describe-services --cluster vetopay-production --services backend --query 'services[0].taskDefinition' --output text)" >> $GITHUB_ENV
+
+    - name: Build and push backend
+      run: |
+        cd vetopay/backend
+        docker build --build-arg NODE_ENV=production --build-arg VITE_API_URL=https://api.vetopay.com -t $ECR_REPOSITORY/backend:latest .
+        docker push $ECR_REPOSITORY/backend:latest
+
+    - name: Build and push frontend
+      run: |
+        cd vetopay/frontend
+        docker build --build-arg NODE_ENV=production --build-arg VITE_API_URL=https://api.vetopay.com -t $ECR_REPOSITORY/frontend:latest .
+        docker push $ECR_REPOSITORY/frontend:latest
+
+    - name: Update ECS services
+      id: update-ecs
+      run: |
+        aws ecs update-service --cluster vetopay-production --service backend --force-new-deployment
+        aws ecs update-service --cluster vetopay-production --service frontend --force-new-deployment
+
+    - name: Wait for deployment
+      run: |
+        aws ecs wait services-stable --cluster vetopay-production --services backend frontend
+
+    - name: Health check
+      run: |
+        curl -f https://vetopay.com/health || exit 1
+
+    - name: Notify deployment status
+      if: always()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        channel-id: 'deployments'
+        slack-message: |
+          Deployment to production ${{ steps.update-ecs.outcome == 'success' && 'succeeded' || 'failed' }}
+          Environment: Production
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+          Branch: ${{ github.ref }}
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        aws ecs update-service --cluster vetopay-production --service backend --task-definition ${{ env.CURRENT_VERSION }}
+        aws ecs update-service --cluster vetopay-production --service frontend --task-definition ${{ env.CURRENT_VERSION }}
+        aws ecs wait services-stable --cluster vetopay-production --services backend frontend 

@@ -1,0 +1,153 @@
+// Prisma schema for VetoPay
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  VENDOR
+  ADMIN
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum TransactionType {
+  TRANSFER
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum WalletStatus {
+  ACTIVE
+  SUSPENDED
+  FROZEN
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+enum NotificationType {
+  TRANSACTION
+  SYSTEM
+  SECURITY
+  ACCOUNT
+}
+
+model User {
+  id                String          @id @default(uuid())
+  email             String          @unique
+  password          String
+  firstName         String
+  lastName          String
+  role              UserRole        @default(USER)
+  isActive          Boolean         @default(true)
+  emailVerified     Boolean         @default(false)
+  twoFactorEnabled  Boolean         @default(false)
+  twoFactorSecret   String?
+  passwordResetToken String?        @unique
+  passwordResetExpires DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  wallet            Wallet?
+  transactions      Transaction[]   @relation("UserTransactions")
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  refreshTokens     RefreshToken[]
+
+  @@index([email])
+  @@index([passwordResetToken])
+}
+
+model Wallet {
+  id                String          @id @default(uuid())
+  userId            String          @unique
+  balance           Decimal         @default(0.00) @db.Decimal(20, 2)
+  currency          String          @default("USD")
+  status            WalletStatus    @default(ACTIVE)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]   @relation("UserTransactions")
+}
+
+model Transaction {
+  id                String          @id @default(uuid())
+  amount            Decimal         @db.Decimal(20, 2)
+  type              TransactionType
+  status            TransactionStatus @default(PENDING)
+  fromUserId        String
+  toUserId          String?
+  fromUser          User            @relation("UserTransactions", fields: [fromUserId], references: [id])
+  toUser            User?           @relation("UserTransactions", fields: [toUserId], references: [id])
+  description       String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([status])
+}
+
+model Notification {
+  id                String          @id @default(uuid())
+  userId            String
+  type              NotificationType
+  title             String
+  message           String
+  status            NotificationStatus @default(UNREAD)
+  metadata          Json?
+  readAt            DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id                String          @id @default(uuid())
+  userId            String?
+  action            String
+  entity            String
+  entityId          String?
+  metadata          Json?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime        @default(now())
+
+  user              User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id                String          @id @default(uuid())
+  userId            String
+  token             String          @unique
+  expiresAt         DateTime
+  createdAt         DateTime        @default(now())
+
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+} 

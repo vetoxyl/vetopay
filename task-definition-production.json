@@ -1,0 +1,81 @@
+{
+    "family": "vetopay-production",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "2048",
+    "memory": "4096",
+    "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskRole",
+    "containerDefinitions": [
+        {
+            "name": "frontend",
+            "image": "${ECR_REPOSITORY}/frontend:latest-production",
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 80,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "NODE_ENV",
+                    "value": "production"
+                },
+                {
+                    "name": "VITE_API_URL",
+                    "value": "https://api.vetopay.com"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/vetopay-production",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "frontend"
+                }
+            }
+        },
+        {
+            "name": "backend",
+            "image": "${ECR_REPOSITORY}/backend:latest-production",
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 3000,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "NODE_ENV",
+                    "value": "production"
+                },
+                {
+                    "name": "DATABASE_URL",
+                    "value": "postgresql://postgres:postgres@db:5432/vetopay"
+                },
+                {
+                    "name": "REDIS_URL",
+                    "value": "redis://redis:6379"
+                },
+                {
+                    "name": "JWT_SECRET",
+                    "value": "${JWT_SECRET}"
+                },
+                {
+                    "name": "PAYSTACK_SECRET_KEY",
+                    "value": "${PAYSTACK_SECRET_KEY}"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/vetopay-production",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "backend"
+                }
+            }
+        }
+    ]
+} 
