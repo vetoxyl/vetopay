@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-COPY tsconfig.json ./
 
 # Install dependencies and generate package-lock.json
 RUN npm install && \
@@ -13,10 +12,6 @@ RUN npm install && \
 
 # Copy source code
 COPY src/ ./src/
-
-# Install TypeScript and compile
-RUN npm install -g typescript && \
-    tsc
 
 # Production stage
 FROM node:18-alpine
@@ -29,8 +24,9 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm install --omit=dev
 
-# Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
+# Copy application source code from builder stage
+# (No longer copying from a 'dist' folder, as we are not compiling TypeScript)
+COPY --from=builder /app/src ./src
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -40,4 +36,5 @@ ENV PORT=3000
 EXPOSE 3000
 
 # Start application
-CMD ["node", "dist/server.js"] 
+# (Running directly from 'src' as it's JavaScript)
+CMD ["node", "src/server.js"] 
