@@ -12,6 +12,11 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# ---- Add these lines for debugging ----
+RUN echo "--- Listing /app/src/pages ---" && ls -R /app/src/pages
+RUN echo "--- Listing /app/src/pages/admin ---" && ls -R /app/src/pages/admin || echo "Admin directory not found or empty"
+# ------------------------------------
+
 # Build the application
 RUN npm run build
 
